@@ -1,0 +1,151 @@
+---
+title: "Interview Assessment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+```
+
+```{r}
+# import libraries required
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(viridis) # library package to modify the color 
+```
+
+```{r}
+# load all required data set from GitHub
+malaria_inc_dataset <- data.frame(read.csv("https://raw.githubusercontent.com/1008siang/Interview_Assessment/main/malaria_inc.csv", header = TRUE, sep = ","))
+malaria_death_dataset <- data.frame(read.csv("https://raw.githubusercontent.com/1008siang/Interview_Assessment/main/malaria_deaths.csv", header = TRUE, sep = ","))
+malaria_death_age_dataset <- data.frame(read.csv("https://raw.githubusercontent.com/1008siang/Interview_Assessment/main/malaria_deaths_age.csv", header = TRUE, sep = ","))
+
+# rename the column to prevent complicated column name
+colnames(malaria_inc_dataset)[4]= "Malaria_Incidence (per 1000 population at risk)"
+colnames(malaria_death_dataset)[4] = "Death Rate (per 100,000 people)"
+
+# data cleaning to separate the data set into regions and countries
+malaria_inc_region_dataset <- malaria_inc_dataset[malaria_inc_dataset$Code == "" | malaria_inc_dataset$Code =="OWID_WRL",] # regions data set for malaria incidence
+malaria_inc_country_dataset <- malaria_inc_dataset[malaria_inc_dataset$Code != "" & malaria_inc_dataset$Code != "OWID_WRL",] # country data set for malaria incidence
+
+malaria_death_region_dataset <- malaria_death_dataset[malaria_death_dataset$Code == "" | malaria_death_dataset$Code =="OWID_WRL" ,] # regions data set for malaria death rate
+malaria_death_country_dataset <- malaria_death_dataset[malaria_death_dataset$Code != "" & malaria_death_dataset$Code != "OWID_WRL" ,] # country data set for malaria death rate
+
+malaria_death_age_region_dataset <- malaria_death_age_dataset[is.na(malaria_death_age_dataset$code) | malaria_death_age_dataset$code =="OWID_WRL" ,] # regions data set for malaria death rate per age group
+malaria_death_age_country_dataset <- malaria_death_age_dataset[!is.na(malaria_death_age_dataset$code) & malaria_death_age_dataset$code != "OWID_WRL" ,] # country data set for malaria death rate per age group
+
+```
+
+```{r}
+# Malaria Incidence (per 1000 population at risk) for each Region
+head(malaria_inc_region_dataset,5)
+```
+
+```{r}
+# Malaria Incidence (per 1000 population at risk) for each Country
+head(malaria_inc_country_dataset,5)
+```
+
+```{r}
+# Death Rate (per 100,000 people) for each Region
+head(malaria_death_region_dataset,5)
+```
+
+```{r}
+# Death Rate (per 100,000 people) for each Country
+head(malaria_death_country_dataset,5)
+```
+
+```{r}
+# remove unwanted index column
+malaria_death_age_region_dataset <- malaria_death_age_region_dataset[,-1]
+head(malaria_death_age_region_dataset,5)
+```
+
+```{r}
+# remove unwanted index column
+malaria_death_age_country_dataset <- malaria_death_age_country_dataset[,-1]
+head(malaria_death_age_country_dataset,5)
+```
+
+```{r}
+
+# merge 2 data sets on the column "Entity"
+region_inc_death_dataset <- merge(malaria_inc_region_dataset, malaria_death_region_dataset, by=c('Entity'))
+
+# determine the text to be shown in the hover
+malaria_death_region_dataset$hover <- paste0(malaria_death_region_dataset$Entity, "\n", "Death Rate (per 100,000 people)：", round(malaria_death_region_dataset$`Death Rate (per 100,000 people)`,3))
+
+temp_lenght <-  length(malaria_death_region_dataset$`Death Rate (per 100,000 people)`)
+for(i in 1:temp_lenght){
+  if(malaria_death_region_dataset$`Death Rate (per 100,000 people)`[i] >= 20){
+    malaria_death_region_dataset$Category[i] = "high"
+  }else{
+    malaria_death_region_dataset$Category[i] = "low"
+  }
+}
+
+malaria_death_region_dataset
+
+# implement plotly to generate the bar chart
+bar <- plot_ly(malaria_death_region_dataset,
+                x= ~Entity,
+                y= ~`Death Rate (per 100,000 people)`,
+                color = ~Entity,
+                hovertext=~hover,
+                frame = ~Year, # indicate the time transition over years
+                width= 800,
+                height = 800)
+
+bar <- bar %>% add_bars(width = 0.5) %>% layout(title = 'Death Rate of Malaria (per 100,000 people) in Different Regions', xaxis = list(showticklabels=FALSE)) # hide the x-axis label
+
+
+bar
+
+
+ 
+```
+
+
+```{r}
+
+# merge 2 data sets on the columns "Code", "Entity" and "Year"
+merge_inc_death_dataset <- merge(malaria_inc_country_dataset, malaria_death_country_dataset, by=c('Code','Entity','Year'))
+
+# determine the text to be shown in the hover
+merge_inc_death_dataset$hover <- paste0(merge_inc_death_dataset$Entity,"\n",merge_inc_death_dataset$Code, "\n", "Malaria Incidence (per 100 population at risk) :", round(merge_inc_death_dataset$`Malaria_Incidence (per 1000 population at risk)`,5), "\n", "Death Rate (per 100,000 people)",round( merge_inc_death_dataset$`Death Rate (per 100,000 people)`,5))
+
+# implement plotly plot_geo() function to generate the choropleth map
+map <- plot_geo(merge_inc_death_dataset, frame=~Year) %>% add_trace(locations= ~Code,
+                                                                z= ~`Malaria_Incidence (per 1000 population at risk)`,
+                                                                zmax=max(malaria_inc_dataset$`Malaria_Incidence (per 1000 population at risk)`), # max value for the legend
+                                                                zmin=0,
+                                                                color= ~`Malaria_Incidence (per 1000 population at risk)`,
+                                                                colors = plasma(50, alpha = 1, begin = 0, end = 1, direction = 1), # color plalette of the legend
+                                                                text= ~hover,
+                                                                hoverinfo = 'text') %>%
+      layout(title = "Malaria Incidence (per 1000 population at risk) and Death Rate over different Countries ")
+
+map
+
+```
+
+
+```{r}
+# implement plotly to generate the line charts with facets
+
+line <- ggplot(malaria_death_age_country_dataset,
+            aes(x=year,
+                y=deaths,
+                color=entity)) + geom_line()
+line <- line + facet_grid( ~ factor(age_group, levels=c('Under 5','5-14','15-49','50-69','70 or older'))) # indicate the facet and re-order the facets accordingly
+ggplotly(line)
+
+```
+
+
+
